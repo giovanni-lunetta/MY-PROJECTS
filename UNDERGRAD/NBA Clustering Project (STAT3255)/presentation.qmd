@@ -1,0 +1,1385 @@
+---
+title: "Clustering NBA Players By Archetype"
+author: "Giovanni Lunetta"
+format:
+  revealjs:
+    height: 500
+    width: 850 
+    embed-resources: true
+    slide-number: true
+    smaller: true
+    scrollable: true
+    theme: solarized
+#    chalkboard: 
+#      buttons: false
+    preview-links: auto
+#    logo: images/quarto.png
+#    css: styles.css
+    footer: "UConn Stat-4185"
+execute: 
+  cache: true
+---
+
+## Outline
+
+1. Introduction & Specific Aims
+
+2. Data
+
+3. Data Cleaning
+
+5. Visualizations
+
+7. Clustering
+
+8. Conclusions
+
+# Introduction
+
+## 1. Introduction & Specific Aims
+
+* Research Objective: 
+
+    * The objective of this project is to cluster NBA players based on their playing style and identify different archetypes that can be used for player analysis and team building.
+
+* Importance: 
+
+    * Understanding player archetypes can be highly valuable for NBA teams when it comes to drafting, trades, and overall team building. By identifying similar players, teams can better understand how to use them in their system and make more informed decisions. Additionally, this project can provide fans and analysts with a deeper understanding of player similarities and differences beyond simple statistics.
+
+* Previous Research
+    * <https://bestballstats.com/2022/07/23/generating-nba-archetypes-using-k-means-clustering/>
+    * <https://www.nicksniche.net/machine-learning/identifying-nba-player-archetypes-using-k-means-clustering-part-one>
+    * <https://alexcstern.github.io/hoopDown.html>
+
+# Data
+
+## 2. Data
+
+The goal of this project was to take NBA players from the past 10 seasons and use both normal and advanced regular season statistics per 36 minutes of game play to differentiate between different player archetypes. 
+
+Data was collected from <https://stathead.com/basketball/> and the past 10 NBA seasons were used.
+
+Here were the variables used:
+
+Advanced Statistics:
+
+* ORB% -- Offensive Rebound Percentage
+    * An estimate of the percentage of available offensive rebounds a player grabbed while they were on the floor.
+
+* DRB% -- Defensive Rebound Percentage
+    * An estimate of the percentage of available defensive rebounds a player grabbed while they were on the floor.
+
+* AST% -- Assist Percentage
+    * An estimate of the percentage of teammate field goals a player assisted while they were on the floor.
+
+* STL% -- Steal Percentage
+    * An estimate of the percentage of opponent possessions that end with a steal by the player while they were on the floor.
+
+* BLK% -- Block Percentage
+    * An estimate of the percentage of opponent two-point field goal attempts blocked by the player while they were on the floor.
+
+* TOV% -- Turnover Percentage
+    * An estimate of turnovers committed per 100 plays.
+
+* USG% -- Usage Percentage
+    * An estimate of the percentage of team plays used by a player while they were on the floor.
+
+Normal Statistics:
+
+* Per 36 Minutes Played
+
+* 2P -- 2-Point Field Goals
+
+* 2PA -- 2-Point Field Goal Attempts
+
+* 3P -- 3-Point Field Goals
+
+* 3PA -- 3-Point Field Goal Attempts
+
+* FT -- Free Throws
+
+* FTA -- Free Throw Attempts
+
+* PTS -- Points
+
+# Data Cleaning
+
+## Data Cleaning
+
+* Removed duplicate players
+
+* Merged dataset with Minutes Played variable with Per 36 Minutes dataset in order to better filter players.
+
+* Filtered dataset to only include players who averaged atleast 12 minutes per game and played a total of 82 games over the past 10 seasons.
+
+* Replaced players with missing 3P% with 0.
+
+## Data Cleaning
+
+```{python}
+#| echo: true
+
+import pandas as pd
+
+df = pd.read_csv("/Users/giovanni-lunetta/stat_4185/final/past_ten_seasons/data/cleaned.csv")
+
+df.head(15)
+```
+
+# Visualizations
+
+## Visualizations
+::: {.panel-tabset}
+### Code
+We can create boxplots for each variable:
+```{python}
+#| echo: true
+#| eval: false
+
+import matplotlib.pyplot as plt
+
+# create a figure with multiple subplots
+fig, axes = plt.subplots(nrows=8, ncols=4, figsize=(20, 20))
+
+# create a boxplot for each continuous variable
+for ax, col in zip(axes.flatten(), df.select_dtypes(include=['float64', 'int64']).columns):
+    ax.boxplot(df[col], vert=False)
+    ax.set_title(col)
+
+# adjust the layout and save the figure
+plt.tight_layout()
+plt.show()
+```
+### Output
+```{python}
+#| echo: false
+#| eval: true
+
+import matplotlib.pyplot as plt
+
+# create a figure with multiple subplots
+fig, axes = plt.subplots(nrows=8, ncols=4, figsize=(20, 20))
+
+# create a boxplot for each continuous variable
+for ax, col in zip(axes.flatten(), df.select_dtypes(include=['float64', 'int64']).columns):
+    ax.boxplot(df[col], vert=False)
+    ax.set_title(col)
+
+# adjust the layout and save the figure
+plt.tight_layout()
+plt.show()
+```
+:::
+
+## Visualizations
+::: {.panel-tabset}
+### Code
+We can also look at the relationship between USG% and all other variables:
+```{python}
+#| echo: true
+#| eval: false
+
+# select the columns to plot (all continuous variables and USG%)
+cols = df.select_dtypes(include=['float64', 'int64']).columns.tolist()
+cols.remove('USG%')
+cols.append('USG%')
+
+# create a figure with multiple subplots
+fig, axes = plt.subplots(nrows=8, ncols=4, figsize=(20, 20))
+
+# create a scatter plot for each continuous variable in relation to USG%
+for ax, col in zip(axes.flatten(), cols):
+    ax.scatter(df['USG%'], df[col])
+    ax.set_xlabel('USG%')
+    ax.set_ylabel(col)
+
+# adjust the layout and save the figure
+plt.tight_layout()
+plt.show()
+```
+### Output
+```{python}
+#| echo: false
+#| eval: true
+
+# select the columns to plot (all continuous variables and USG%)
+cols = df.select_dtypes(include=['float64', 'int64']).columns.tolist()
+cols.remove('USG%')
+cols.append('USG%')
+
+# create a figure with multiple subplots
+fig, axes = plt.subplots(nrows=8, ncols=4, figsize=(20, 20))
+
+# create a scatter plot for each continuous variable in relation to USG%
+for ax, col in zip(axes.flatten(), cols):
+    ax.scatter(df['USG%'], df[col])
+    ax.set_xlabel('USG%')
+    ax.set_ylabel(col)
+
+# adjust the layout and save the figure
+plt.tight_layout()
+plt.show()
+```
+:::
+
+## Visualizations
+::: {.panel-tabset}
+### Code
+Finally, we can look at a correlation matrix
+```{python}
+#| echo: true
+#| eval: false
+
+import seaborn as sns
+import numpy as np
+
+# select only the continuous variables from the DataFrame
+df_continuous = df.select_dtypes(include=[np.number])
+
+# calculate the correlation matrix
+corr_matrix = df_continuous.corr()
+
+# create a heatmap of the correlation matrix
+plt.figure(figsize=(20, 20))
+sns.heatmap(corr_matrix, annot=True, cmap="coolwarm")
+plt.title("Correlation Matrix Heatmap")
+plt.show()
+```
+### Output
+```{python}
+#| echo: false
+#| eval: true
+
+import seaborn as sns
+import numpy as np
+
+# select only the continuous variables from the DataFrame
+df_continuous = df.select_dtypes(include=[np.number])
+
+# calculate the correlation matrix
+corr_matrix = df_continuous.corr()
+
+# create a heatmap of the correlation matrix
+plt.figure(figsize=(20, 20))
+sns.heatmap(corr_matrix, annot=True, cmap="coolwarm")
+plt.title("Correlation Matrix Heatmap")
+plt.show()
+```
+:::
+
+# Clustering with K-means
+
+## Clustering with K-means
+Here are the variables we are using:
+```{python}
+#| echo: false
+#| eval: true
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+from sklearn.cluster import KMeans
+from sklearn.preprocessing import StandardScaler
+from sklearn.model_selection import train_test_split
+from sklearn.decomposition import PCA
+from sklearn.metrics import silhouette_score, calinski_harabasz_score, davies_bouldin_score
+
+df = pd.read_csv("/Users/giovanni-lunetta/stat_4185/final/past_ten_seasons/data/cleaned.csv")
+
+from sklearn.preprocessing import StandardScaler
+
+# Create a StandardScaler object
+scaler = StandardScaler()
+
+# X = df[['ORB%', 'DRB%', 'AST%', 'STL%', 'BLK%', 'TOV%', 'USG%', '2P', '2PA', '3P', '3PA', 'FT', 'FTA', 'PTS', 'FG%', '2P%',
+#        '3P%', 'FT%', 'TS%', 'eFG%']]
+
+X = df[['ORB%', 'DRB%', 'AST%', 'STL%', 'BLK%', 'TOV%', 'USG%', '2P', '2PA', '3P', '3PA', 'FT', 'FTA', 'PTS']]
+
+# Create a StandardScaler object
+scaler = StandardScaler()
+
+# Apply the scaler to the selected variables
+X_scaled = scaler.fit_transform(X)
+```
+
+```{python}
+#| echo: true
+
+X.head()
+```
+
+## Clustering with K-means
+::: {.panel-tabset}
+### Code
+The next step is to find the optimal number of clusters for :
+```{python}
+#| echo: true
+#| eval: false
+
+# Find the optimal number of clusters using the elbow method
+n_clusters = np.arange(1, 20)
+inertia_scores = []
+
+for n in n_clusters:
+    kmeans = KMeans(n_clusters=n, random_state=42)
+    kmeans.fit(X_scaled)
+    inertia_scores.append(kmeans.inertia_)
+
+plt.plot(n_clusters, inertia_scores, marker='o')
+plt.xlabel('Number of clusters')
+plt.ylabel('Inertia')
+plt.show()
+```
+### Output
+```{python}
+#| echo: false
+#| eval: true
+
+# Find the optimal number of clusters using the elbow method
+n_clusters = np.arange(1, 20)
+inertia_scores = []
+
+for n in n_clusters:
+    kmeans = KMeans(n_clusters=n, random_state=42)
+    kmeans.fit(X_scaled)
+    inertia_scores.append(kmeans.inertia_)
+
+plt.plot(n_clusters, inertia_scores, marker='o')
+plt.xlabel('Number of clusters')
+plt.ylabel('Inertia')
+plt.show()
+```
+:::
+
+## Clustering with K-means
+::: {.panel-tabset}
+### Code
+We can visualize this better by looking at the difference between k and k+1 clusters:
+```{python}
+#| echo: true
+#| eval: false
+
+wss_difference = np.diff(inertia_scores) * -1
+
+plt.plot(n_clusters[:-1], wss_difference, marker='o')
+plt.xlabel('Number of clusters')
+plt.ylabel('WSS Difference')
+plt.title('Difference in Total Within-Cluster Sum of Squares (WSS) for k and k+1 Clusters')
+plt.show()
+```
+### Output
+```{python}
+#| echo: false
+#| eval: true
+
+wss_difference = np.diff(inertia_scores) * -1
+
+plt.plot(n_clusters[:-1], wss_difference, marker='o')
+plt.xlabel('Number of clusters')
+plt.ylabel('WSS Difference')
+plt.title('Difference in Total Within-Cluster Sum of Squares (WSS) for k and k+1 Clusters')
+plt.show()
+```
+:::
+
+## Clustering with k-means
+Now we can choose the optimal number and run K-Means:
+```{python}
+#| echo: true
+
+# Choose the optimal number of clusters based on your analysis
+optimal_n_clusters = 8  # Modify this value based on the elbow method
+
+kmeans = KMeans(n_clusters=optimal_n_clusters, random_state=42)
+kmeans.fit(X_scaled)
+cluster_labels = kmeans.predict(X_scaled)
+# cluster_labels_test = kmeans.predict(X_test)
+
+X_original = pd.DataFrame(X_scaled, columns=X.columns)
+```
+
+## Clustering with k-means
+::: {.panel-tabset}
+### Code
+We can also look at the center of the clusters for each variable in order to see differences among clusters and the variables:
+```{python}
+#| echo: true
+#| eval: false
+
+import seaborn as sns
+
+# Get cluster centers and convert them back to the original scale
+cluster_centers = scaler.inverse_transform(kmeans.cluster_centers_)
+
+# Create a DataFrame with cluster centers and features
+centers_df = pd.DataFrame(cluster_centers, columns=X.columns)
+centers_df['Cluster'] = centers_df.index + 1  # Add cluster labels starting from 1
+
+# Melt the DataFrame into a long format for easier plotting
+centers_melted = centers_df.melt(id_vars='Cluster', var_name='Feature', value_name='Value')
+
+g = sns.FacetGrid(centers_melted, col='Cluster', col_wrap=2, hue='Cluster', palette='deep', sharey=False, height=2, aspect=2)
+g.map_dataframe(sns.scatterplot, x='Feature', y='Value', s=100)
+g.set_xticklabels(rotation=45)
+
+g.set_axis_labels("Predictor", "Cluster Center")
+g.fig.subplots_adjust(top=0.9)
+g.fig.suptitle("Visualizing K-Means Cluster Makeups")
+g.add_legend(title='Cluster', loc='upper right')
+
+plt.show()
+```
+### Output
+```{python}
+#| echo: false
+#| eval: true
+
+import seaborn as sns
+
+# Get cluster centers and convert them back to the original scale
+cluster_centers = scaler.inverse_transform(kmeans.cluster_centers_)
+
+# Create a DataFrame with cluster centers and features
+centers_df = pd.DataFrame(cluster_centers, columns=X.columns)
+centers_df['Cluster'] = centers_df.index + 1  # Add cluster labels starting from 1
+
+# Melt the DataFrame into a long format for easier plotting
+centers_melted = centers_df.melt(id_vars='Cluster', var_name='Feature', value_name='Value')
+
+g = sns.FacetGrid(centers_melted, col='Cluster', col_wrap=2, hue='Cluster', palette='deep', sharey=False, height=2, aspect=2)
+g.map_dataframe(sns.scatterplot, x='Feature', y='Value', s=100)
+g.set_xticklabels(rotation=45)
+
+g.set_axis_labels("Predictor", "Cluster Center")
+g.fig.subplots_adjust(top=0.9)
+g.fig.suptitle("Visualizing K-Means Cluster Makeups")
+g.add_legend(title='Cluster', loc='upper right')
+
+plt.show()
+```
+:::
+
+## Clustering with k-means
+::: {.panel-tabset}
+### Code
+We can also get the player names for each cluster:
+```{python}
+#| echo: true
+#| eval: false
+
+# Add cluster labels to the original dataset
+df['Cluster (kmeans)'] = kmeans.labels_
+
+# View the players in each cluster
+for i in range(optimal_n_clusters):
+    print(f"Players in Cluster {i+1}:")
+    print(df[df['Cluster (kmeans)'] == i]['Player'].values)
+    print()
+```
+### Output
+```{python}
+#| echo: false
+#| eval: true
+
+# Add cluster labels to the original dataset
+df['Cluster (kmeans)'] = kmeans.labels_
+
+# View the players in each cluster
+for i in range(optimal_n_clusters):
+    print(f"Players in Cluster {i+1}:")
+    print(df[df['Cluster (kmeans)'] == i]['Player'].values)
+    print()
+```
+:::
+
+## Clustering with k-means
+Finally, we can visualize these differences among variables in three different charts that all essentially show the same thing but have different levels of interpretability.
+
+Here is a radar chart:
+```{python}
+#| echo: false
+#| eval: true
+
+# features = ['ORB%', 'DRB%', 'AST%', 'STL%', 'BLK%', 'TOV%', 'USG%', '2P', '2PA', '3P', '3PA', 'FT', 'FTA', 'PTS', 'FG%', '2P%',
+#        '3P%', 'FT%', 'TS%', 'eFG%']
+
+features = ['ORB%', 'DRB%', 'AST%', 'STL%', 'BLK%', 'TOV%', 'USG%', '2P', '2PA', '3P', '3PA', 'FT', 'FTA', 'PTS']
+
+mean_values = df.groupby('Cluster (kmeans)')[features].mean()
+
+from math import pi
+
+def create_radar_chart(mean_values, features, clusters):
+    # Set the number of variables and calculate the angle for each axis
+    num_vars = len(features)
+    angles = [n / float(num_vars) * 2 * pi for n in range(num_vars)]
+    angles += angles[:1]
+
+    # Set the radar chart figure
+    plt.figure(figsize=(8, 8))
+    ax = plt.subplot(111, polar=True)
+
+    # Set the first axis on top and move clockwise
+    ax.set_theta_offset(pi / 2)
+    ax.set_theta_direction(-1)
+
+    # Draw axis lines and labels
+    plt.xticks(angles[:-1], features)
+    ax.set_rlabel_position(0)
+    plt.yticks([0.2, 0.4, 0.6, 0.8], ["0.2", "0.4", "0.6", "0.8"], color="gray", size=8)
+    plt.ylim(0, 1)
+
+    # Normalize the mean values to the range [0, 1]
+    normalized_values = mean_values / mean_values.max().max()
+
+    # Plot the radar chart for each cluster
+    for i in range(clusters):
+        values = normalized_values.iloc[i].tolist()
+        values += values[:1]
+        ax.plot(angles, values, linewidth=1, linestyle='solid', label=f"Cluster {i}")
+        ax.fill(angles, values, alpha=0.25)
+
+    # Add legend
+    plt.legend(loc='upper right', bbox_to_anchor=(0.1, 0.1))
+    plt.title("Mean values by attribute for each cluster")
+    plt.show()
+
+# Call the function to create the radar chart
+create_radar_chart(mean_values, features, optimal_n_clusters)
+```
+
+## Clustering with k-means
+Here is a parallel coordinates plot:
+```{python}
+#| echo: false
+#| eval: true
+
+import pandas as pd
+import matplotlib.pyplot as plt
+
+def create_parallel_coordinates_plot(mean_values, features, clusters):
+    # Create a new DataFrame with the cluster labels and mean values
+    mean_values['cluster'] = mean_values.index
+    mean_values = mean_values.reset_index(drop=True)
+
+    # Set up the plot
+    plt.figure(figsize=(15, 10))
+
+    # Plot the parallel coordinates plot using pd.plotting.parallel_coordinates()
+    pd.plotting.parallel_coordinates(mean_values, 'cluster', color=plt.cm.Set1.colors)
+
+    # Customize the plot
+    plt.title("Parallel coordinates plot of mean values by attribute for each cluster")
+    plt.xticks(range(len(features)), features, rotation=90)
+    plt.legend(title='Cluster', loc='upper right')
+
+create_parallel_coordinates_plot(mean_values, features, optimal_n_clusters)
+plt.show()
+```
+
+## Clustering with K-means
+Here is a heatmap:
+```{python}
+#| echo: false
+#| eval: true
+
+def create_heatmap(mean_values, features, clusters):
+    # Normalize the mean values to the range [0, 1]
+    normalized_values = mean_values / mean_values.max().max()
+
+    # Plot the heatmap
+    plt.figure(figsize=(25, 10))
+    sns.heatmap(normalized_values, cmap="viridis", annot=True, fmt=".2f", linewidths=.5, cbar_kws={'label': 'Normalized mean value'})
+    plt.title("Heatmap of mean values by attribute for each cluster")
+    plt.xlabel("Feature")
+    plt.ylabel("Cluster")
+    plt.show()
+
+# Call the function to create the heatmap
+create_heatmap(mean_values, features, optimal_n_clusters)
+```
+:::
+
+# Clustering with k-means (PCA)
+
+## Clustering with k-means (PCA)
+::: {.panel-tabset}
+### Code
+A lot of the code is the same, here is what is different:
+```{python}
+#| echo: false
+#| eval: true
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+from sklearn.cluster import KMeans
+from sklearn.preprocessing import StandardScaler
+from sklearn.model_selection import train_test_split
+from sklearn.decomposition import PCA
+from sklearn.metrics import silhouette_score, calinski_harabasz_score, davies_bouldin_score
+
+df = pd.read_csv("/Users/giovanni-lunetta/stat_4185/final/past_ten_seasons/data/cleaned.csv")
+
+from sklearn.preprocessing import StandardScaler
+
+# Create a StandardScaler object
+scaler = StandardScaler()
+
+# X = df[['ORB%', 'DRB%', 'AST%', 'STL%', 'BLK%', 'TOV%', 'USG%', '2P', '2PA', '3P', '3PA', 'FT', 'FTA', 'PTS', 'FG%', '2P%',
+#        '3P%', 'FT%', 'TS%', 'eFG%']]
+
+X = df[['ORB%', 'DRB%', 'AST%', 'STL%', 'BLK%', 'TOV%', 'USG%', '2P', '2PA', '3P', '3PA', 'FT', 'FTA', 'PTS']]
+
+# Create a StandardScaler object
+scaler = StandardScaler()
+
+# Apply the scaler to the selected variables
+X_scaled = scaler.fit_transform(X)
+```
+```{python}
+#| echo: true
+#| eval: false
+
+from sklearn.decomposition import PCA
+
+# Perform PCA on the scaled data
+pca = PCA().fit(X_scaled)
+
+# Calculate cumulative explained variance
+cumulative_explained_variance = np.cumsum(pca.explained_variance_ratio_)
+
+# Visualize the cumulative explained variance
+plt.plot(range(1, len(cumulative_explained_variance) + 1), cumulative_explained_variance)
+plt.xlabel('Number of Principal Components')
+plt.ylabel('Cumulative Explained Variance Ratio')
+plt.title('Cumulative Explained Variance Ratio vs. Number of Principal Components')
+plt.grid()
+plt.show()
+```
+### Output
+```{python}
+#| echo: false
+#| eval: true
+
+from sklearn.decomposition import PCA
+
+# Perform PCA on the scaled data
+pca = PCA().fit(X_scaled)
+
+# Calculate cumulative explained variance
+cumulative_explained_variance = np.cumsum(pca.explained_variance_ratio_)
+
+# Visualize the cumulative explained variance
+plt.plot(range(1, len(cumulative_explained_variance) + 1), cumulative_explained_variance)
+plt.xlabel('Number of Principal Components')
+plt.ylabel('Cumulative Explained Variance Ratio')
+plt.title('Cumulative Explained Variance Ratio vs. Number of Principal Components')
+plt.grid()
+plt.show()
+```
+:::
+
+## Clustering with k-means (pca)
+::: {.panel-tabset}
+### Code
+Now we choose the number of components, use the elbow method, and then run k-means with the optimal number of clusters:
+```{python}
+#| echo: true
+#| eval: false
+
+n_components = 3  # Choose the optimal number of components based on your analysis
+
+# Create a PCA object with the optimal number of components
+pca = PCA(n_components=n_components)
+
+# Fit and transform the scaled data
+X_pca = pca.fit_transform(X_scaled)
+
+# Find the optimal number of clusters using the elbow method
+n_clusters = np.arange(1, 20)
+inertia_scores = []
+
+for n in n_clusters:
+    kmeans = KMeans(n_clusters=n, random_state=42)
+    kmeans.fit(X_pca)
+    inertia_scores.append(kmeans.inertia_)
+
+plt.plot(n_clusters, inertia_scores, marker='o')
+plt.xlabel('Number of clusters')
+plt.ylabel('Inertia')
+plt.show()
+
+wss_difference = np.diff(inertia_scores) * -1
+
+plt.plot(n_clusters[:-1], wss_difference, marker='o')
+plt.xlabel('Number of clusters')
+plt.ylabel('WSS Difference')
+plt.title('Difference in Total Within-Cluster Sum of Squares (WSS) for k and k+1 Clusters')
+plt.show()
+
+# Choose the optimal number of clusters based on your analysis
+optimal_n_clusters = 8  # Modify this value based on the elbow method
+
+kmeans = KMeans(n_clusters=optimal_n_clusters, random_state=42)
+kmeans.fit(X_pca)
+cluster_labels = kmeans.predict(X_pca)
+# cluster_labels_test = kmeans.predict(X_pca)
+```
+### Output
+```{python}
+#| echo: false
+#| eval: true
+
+n_components = 3  # Choose the optimal number of components based on your analysis
+
+# Create a PCA object with the optimal number of components
+pca = PCA(n_components=n_components)
+
+# Fit and transform the scaled data
+X_pca = pca.fit_transform(X_scaled)
+
+# Find the optimal number of clusters using the elbow method
+n_clusters = np.arange(1, 20)
+inertia_scores = []
+
+for n in n_clusters:
+    kmeans = KMeans(n_clusters=n, random_state=42)
+    kmeans.fit(X_pca)
+    inertia_scores.append(kmeans.inertia_)
+
+plt.plot(n_clusters, inertia_scores, marker='o')
+plt.xlabel('Number of clusters')
+plt.ylabel('Inertia')
+plt.show()
+
+wss_difference = np.diff(inertia_scores) * -1
+
+plt.plot(n_clusters[:-1], wss_difference, marker='o')
+plt.xlabel('Number of clusters')
+plt.ylabel('WSS Difference')
+plt.title('Difference in Total Within-Cluster Sum of Squares (WSS) for k and k+1 Clusters')
+plt.show()
+
+# Choose the optimal number of clusters based on your analysis
+optimal_n_clusters = 8  # Modify this value based on the elbow method
+
+kmeans = KMeans(n_clusters=optimal_n_clusters, random_state=42)
+kmeans.fit(X_pca)
+cluster_labels = kmeans.predict(X_pca)
+# cluster_labels_test = kmeans.predict(X_pca)
+```
+:::
+
+## Clustering with k-means (pca)
+Similarly, we can show the difference of means:
+```{python}
+#| echo: false
+#| eval: true
+
+# Get cluster labels
+cluster_labels = kmeans.labels_
+
+# Add cluster labels to the PCA-transformed data
+X_pca_clustered = np.column_stack((X_pca, cluster_labels))
+
+# Convert the numpy array to a DataFrame
+df_pca_clustered = pd.DataFrame(X_pca_clustered, columns=['PC1', 'PC2', 'PC3', 'Cluster'])
+
+# Plot scatterplots for all clusters
+centers_df = pd.DataFrame(kmeans.cluster_centers_, columns=['PC1', 'PC2', 'PC3'])
+centers_df['Cluster'] = centers_df.index + 1
+
+centers_melted = centers_df.melt(id_vars='Cluster', var_name='Feature', value_name='Value')
+
+# Plot scatterplots for all clusters
+g = sns.FacetGrid(centers_melted, col='Cluster', col_wrap=2, hue='Cluster', palette='deep', sharey=False, height=2, aspect=2)
+g.map_dataframe(sns.scatterplot, x='Feature', y='Value', s=100)
+g.set_xticklabels(rotation=45)
+
+g.set_axis_labels("Predictor", "Cluster Center")
+g.fig.subplots_adjust(top=0.9)
+g.fig.suptitle("Visualizing K-Means Cluster Makeups")
+g.add_legend(title='Cluster', loc='upper right')
+
+plt.show()
+```
+
+## Clustering with k-means (pca)
+Because there are only three components, we can visualize the first two components pretty easily:
+```{python}
+#| echo: false
+#| eval: true
+
+g = sns.FacetGrid(df_pca_clustered, col='Cluster', col_wrap=2, hue='Cluster', palette='deep', sharey=False, height=2, aspect=2)
+g.map_dataframe(sns.scatterplot, x='PC1', y='PC2', s=100)
+g.set_axis_labels("PC1", "PC2")
+g.fig.subplots_adjust(top=0.9)
+g.fig.suptitle("Visualizing K-Means Cluster Makeups")
+g.add_legend(title='Cluster', loc='upper right')
+plt.show()
+
+# Create a DataFrame with PCA components and cluster labels
+pca_df = pd.DataFrame(X_pca, columns=[f"PC{i+1}" for i in range(n_components)])
+pca_df['Cluster'] = cluster_labels
+
+# Create a scatter plot of the first two principal components, colored by cluster label
+plt.figure(figsize=(8, 6))
+sns.scatterplot(data=pca_df, x='PC1', y='PC2', hue='Cluster', palette='deep')
+plt.xlabel('PC1')
+plt.ylabel('PC2')
+plt.title('K-means Clustering on PCA-Transformed Data')
+plt.show()
+```
+
+## Clustering with k-means (pca)
+We can even do this in 3D:
+```{python}
+#| echo: false
+#| eval: true
+
+import plotly.graph_objs as go
+
+# Create a trace for the 3D scatter plot
+scatter3d_trace = go.Scatter3d(
+    x=X_pca[:, 0], y=X_pca[:, 1], z=X_pca[:, 2],
+    mode='markers',
+    marker=dict(
+        size=5,
+        color=cluster_labels,
+        colorscale='Viridis',
+        opacity=0.8
+    )
+)
+
+# Create a layout for the 3D scatter plot
+scatter3d_layout = go.Layout(
+    margin=dict(l=0, r=0, b=0, t=0),
+    scene=dict(
+        xaxis=dict(title='PC1'),
+        yaxis=dict(title='PC2'),
+        zaxis=dict(title='PC3')
+    ),
+)
+
+# Combine the trace and layout into a Figure object
+scatter3d_fig = go.Figure(data=[scatter3d_trace], layout=scatter3d_layout)
+
+# Display the 3D scatter plot
+scatter3d_fig.show()
+```
+
+## Clustering with k-means (pca)
+::: {.panel-tabset}
+### Code
+Here are the players in each cluster once again:
+```{python}
+#| echo: true
+#| eval: false
+
+# Add cluster labels to the original dataset
+df['Cluster (kmeans_PCA)'] = kmeans.labels_
+
+# View the players in each cluster
+for i in range(optimal_n_clusters):
+    print(f"Players in Cluster {i+1}:")
+    print(df[df['Cluster (kmeans_PCA)'] == i]['Player'].values)
+    print()
+```
+### Output
+```{python}
+#| echo: false
+#| eval: true
+
+# Add cluster labels to the original dataset
+df['Cluster (kmeans_PCA)'] = kmeans.labels_
+
+# View the players in each cluster
+for i in range(optimal_n_clusters):
+    print(f"Players in Cluster {i+1}:")
+    print(df[df['Cluster (kmeans_PCA)'] == i]['Player'].values)
+    print()
+```
+:::
+
+## Clustering with k-means (pca)
+Finally, we can show the same three visualizations as before:
+```{python}
+#| echo: false
+#| eval: true
+
+# features = ['ORB%', 'DRB%', 'AST%', 'STL%', 'BLK%', 'TOV%', 'USG%', '2P', '2PA', '3P', '3PA', 'FT', 'FTA', 'PTS', 'FG%', '2P%',
+#        '3P%', 'FT%', 'TS%', 'eFG%']
+
+features = ['ORB%', 'DRB%', 'AST%', 'STL%', 'BLK%', 'TOV%', 'USG%', '2P', '2PA', '3P', '3PA', 'FT', 'FTA', 'PTS']
+
+mean_values = df.groupby('Cluster (kmeans_PCA)')[features].mean()
+
+from math import pi
+
+def create_radar_chart(mean_values, features, clusters):
+    # Set the number of variables and calculate the angle for each axis
+    num_vars = len(features)
+    angles = [n / float(num_vars) * 2 * pi for n in range(num_vars)]
+    angles += angles[:1]
+
+    # Set the radar chart figure
+    plt.figure(figsize=(8, 8))
+    ax = plt.subplot(111, polar=True)
+
+    # Set the first axis on top and move clockwise
+    ax.set_theta_offset(pi / 2)
+    ax.set_theta_direction(-1)
+
+    # Draw axis lines and labels
+    plt.xticks(angles[:-1], features)
+    ax.set_rlabel_position(0)
+    plt.yticks([0.2, 0.4, 0.6, 0.8], ["0.2", "0.4", "0.6", "0.8"], color="gray", size=8)
+    plt.ylim(0, 1)
+
+    # Normalize the mean values to the range [0, 1]
+    normalized_values = mean_values / mean_values.max().max()
+
+    # Plot the radar chart for each cluster
+    for i in range(clusters):
+        values = normalized_values.iloc[i].tolist()
+        values += values[:1]
+        ax.plot(angles, values, linewidth=1, linestyle='solid', label=f"Cluster {i}")
+        ax.fill(angles, values, alpha=0.25)
+
+    # Add legend
+    plt.legend(loc='upper right', bbox_to_anchor=(0.1, 0.1))
+    plt.title("Mean values by attribute for each cluster")
+    plt.show()
+
+# Call the function to create the radar chart
+create_radar_chart(mean_values, features, optimal_n_clusters)
+
+import pandas as pd
+import matplotlib.pyplot as plt
+
+def create_parallel_coordinates_plot(mean_values, features, clusters):
+    # Create a new DataFrame with the cluster labels and mean values
+    mean_values['cluster'] = mean_values.index
+    mean_values = mean_values.reset_index(drop=True)
+
+    # Set up the plot
+    plt.figure(figsize=(15, 10))
+
+    # Plot the parallel coordinates plot using pd.plotting.parallel_coordinates()
+    pd.plotting.parallel_coordinates(mean_values, 'cluster', color=plt.cm.Set1.colors)
+
+    # Customize the plot
+    plt.title("Parallel coordinates plot of mean values by attribute for each cluster")
+    plt.xticks(range(len(features)), features, rotation=90)
+    plt.legend(title='Cluster', loc='upper right')
+
+create_parallel_coordinates_plot(mean_values, features, optimal_n_clusters)
+plt.show()
+
+def create_heatmap(mean_values, features, clusters):
+    # Normalize the mean values to the range [0, 1]
+    normalized_values = mean_values / mean_values.max().max()
+
+    # Plot the heatmap
+    plt.figure(figsize=(25, 10))
+    sns.heatmap(normalized_values, cmap="viridis", annot=True, fmt=".2f", linewidths=.5, cbar_kws={'label': 'Normalized mean value'})
+    plt.title("Heatmap of mean values by attribute for each cluster")
+    plt.xlabel("Feature")
+    plt.ylabel("Cluster")
+    plt.show()
+
+# Call the function to create the heatmap
+create_heatmap(mean_values, features, optimal_n_clusters)
+```
+
+# Clustering with Guassian Mixture (PCA)
+
+## Clustering with Guassian Mixture (PCA)
+::: {.panel-tabset}
+### Code
+Another type of clustering algorithm, which we talked about in class is Guassian Mixtures. This assumes that each cluster follows a normal distribution giving each point a mean and variance.
+
+Again, the code is similar, but I will show the differences:
+
+For starters, after running PCA, 3 principal components explained slighly over 80% of the variance.
+
+The first difference comes from how we calculate the optimal number of clusters:
+```{python}
+#| echo: false
+#| eval: true
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+from sklearn.cluster import KMeans
+from sklearn.preprocessing import StandardScaler
+from sklearn.model_selection import train_test_split
+from sklearn.decomposition import PCA
+from sklearn.metrics import silhouette_score, calinski_harabasz_score, davies_bouldin_score
+from sklearn.mixture import GaussianMixture
+
+df = pd.read_csv("/Users/giovanni-lunetta/stat_4185/final/past_ten_seasons/data/cleaned.csv")
+
+from sklearn.preprocessing import StandardScaler
+
+# Create a StandardScaler object
+scaler = StandardScaler()
+
+X = df[['ORB%', 'DRB%', 'AST%', 'STL%', 'BLK%', 'TOV%', 'USG%', '2P', '2PA', '3P', '3PA', 'FT', 'FTA', 'PTS', 'FG%', '2P%',
+       '3P%', 'FT%', 'TS%', 'eFG%']]
+
+# X = df[['ORB%', 'DRB%', 'AST%', 'STL%', 'BLK%', 'TOV%', 'USG%', '2P', '2PA', '3P', '3PA', 'FT', 'FTA', 'PTS']]
+
+# Create a StandardScaler object
+scaler = StandardScaler()
+
+# Apply the scaler to the selected variables
+X_scaled = scaler.fit_transform(X)
+
+from sklearn.decomposition import PCA
+
+# Perform PCA on the scaled data
+pca = PCA().fit(X_scaled)
+
+# Calculate cumulative explained variance
+cumulative_explained_variance = np.cumsum(pca.explained_variance_ratio_)
+
+# Visualize the cumulative explained variance
+plt.plot(range(1, len(cumulative_explained_variance) + 1), cumulative_explained_variance)
+plt.xlabel('Number of Principal Components')
+plt.ylabel('Cumulative Explained Variance Ratio')
+plt.title('Cumulative Explained Variance Ratio vs. Number of Principal Components')
+plt.grid()
+
+n_components = 3  # Choose the optimal number of components based on your analysis
+
+# Create a PCA object with the optimal number of components
+pca = PCA(n_components=n_components)
+
+# Fit and transform the scaled data
+X_pca = pca.fit_transform(X_scaled)
+```
+
+```{python}
+#| echo: true
+#| eval: false
+
+n_clusters = np.arange(1, 11)
+bic_scores = []
+
+for n in n_clusters:
+    gmm = GaussianMixture(n_components=n, random_state=42)
+    gmm.fit(X_pca)
+    bic_scores.append(gmm.bic(X_pca))
+
+plt.plot(n_clusters, bic_scores, marker='o')
+plt.xlabel('Number of clusters')
+plt.ylabel('BIC Score')
+
+# Find the optimal number of clusters
+optimal_n_clusters = n_clusters[np.argmin(bic_scores)]
+
+# optimal_n_clusters = n_clusters[4]
+
+gmm = GaussianMixture(n_components=optimal_n_clusters, random_state=42)
+gmm.fit(X_pca)
+# cluster_labels_train = gmm.predict(X_train_pca)
+
+# Get cluster labels for each observation
+cluster_labels = gmm.predict(X_pca)
+```
+### Output
+```{python}
+#| echo: false
+#| eval: true
+
+n_clusters = np.arange(1, 11)
+bic_scores = []
+
+for n in n_clusters:
+    gmm = GaussianMixture(n_components=n, random_state=42)
+    gmm.fit(X_pca)
+    bic_scores.append(gmm.bic(X_pca))
+
+plt.plot(n_clusters, bic_scores, marker='o')
+plt.xlabel('Number of clusters')
+plt.ylabel('BIC Score')
+plt.show()
+
+# Find the optimal number of clusters
+optimal_n_clusters = n_clusters[np.argmin(bic_scores)]
+
+# optimal_n_clusters = n_clusters[4]
+
+gmm = GaussianMixture(n_components=optimal_n_clusters, random_state=42)
+gmm.fit(X_pca)
+# cluster_labels_train = gmm.predict(X_train_pca)
+
+# Get cluster labels for each observation
+cluster_labels = gmm.predict(X_pca)
+```
+:::
+
+## Clustering with Guassian Mixture (PCA)
+Then we can look at the difference between means and the clusters in 2D:
+```{python}
+#| echo: false
+#| eval: true
+
+# Get cluster labels
+cluster_labels = gmm.predict(X_pca)
+
+# Add cluster labels to the PCA-transformed data
+X_pca_clustered = np.column_stack((X_pca, cluster_labels))
+
+# Convert the numpy array to a DataFrame
+df_pca_clustered = pd.DataFrame(X_pca_clustered, columns=['PC1', 'PC2', 'PC3', 'Cluster'])
+
+# Plot scatterplots for all clusters
+centers_df = pd.DataFrame(gmm.means_, columns=['PC1', 'PC2', 'PC3'])
+centers_df['Cluster'] = centers_df.index + 1
+
+centers_melted = centers_df.melt(id_vars='Cluster', var_name='Feature', value_name='Value')
+
+# Plot scatterplots for all clusters
+g = sns.FacetGrid(centers_melted, col='Cluster', col_wrap=2, hue='Cluster', palette='deep', sharey=False, height=2, aspect=2)
+g.map_dataframe(sns.scatterplot, x='Feature', y='Value', s=100)
+g.set_xticklabels(rotation=45)
+
+g.set_axis_labels("Predictor", "Cluster Center")
+g.fig.subplots_adjust(top=0.9)
+g.fig.suptitle("Visualizing K-Means Cluster Makeups")
+g.add_legend(title='Cluster', loc='upper right')
+
+plt.show()
+
+g = sns.FacetGrid(df_pca_clustered, col='Cluster', col_wrap=2, hue='Cluster', palette='deep', sharey=False, height=2, aspect=2)
+g.map_dataframe(sns.scatterplot, x='PC1', y='PC2', s=100)
+g.set_axis_labels("PC1", "PC2")
+g.fig.subplots_adjust(top=0.9)
+g.fig.suptitle("Visualizing K-Means Cluster Makeups")
+g.add_legend(title='Cluster', loc='upper right')
+
+plt.show()
+
+# Create a DataFrame with PCA components and cluster labels
+pca_df = pd.DataFrame(X_pca, columns=[f"PC{i+1}" for i in range(n_components)])
+pca_df['Cluster'] = cluster_labels
+
+# Create a scatter plot of the first two principal components, colored by cluster label
+plt.figure(figsize=(8, 6))
+sns.scatterplot(data=pca_df, x='PC1', y='PC2', hue='Cluster', palette='deep')
+plt.xlabel('PC1')
+plt.ylabel('PC2')
+plt.title('K-means Clustering on PCA-Transformed Data')
+plt.show()
+```
+
+## Clustering with Guassian Mixture (PCA)
+Again in 3D:
+```{python}
+#| echo: false
+#| eval: true
+
+import plotly.graph_objs as go
+
+# Create a trace for the 3D scatter plot
+scatter3d_trace = go.Scatter3d(
+    x=X_pca[:, 0], y=X_pca[:, 1], z=X_pca[:, 2],
+    mode='markers',
+    marker=dict(
+        size=5,
+        color=cluster_labels,
+        colorscale='Viridis',
+        opacity=0.8
+    )
+)
+
+# Create a layout for the 3D scatter plot
+scatter3d_layout = go.Layout(
+    margin=dict(l=0, r=0, b=0, t=0),
+    scene=dict(
+        xaxis=dict(title='PC1'),
+        yaxis=dict(title='PC2'),
+        zaxis=dict(title='PC3')
+    ),
+)
+
+# Combine the trace and layout into a Figure object
+scatter3d_fig = go.Figure(data=[scatter3d_trace], layout=scatter3d_layout)
+
+# Display the 3D scatter plot
+scatter3d_fig.show()
+```
+
+## Clustering with Guassian Mixture (PCA)
+::: {.panel-tabset}
+### Code
+Again, here are the players in each cluster:
+```{python}
+#| echo: true
+#| eval: false
+
+# Add cluster labels to the original DataFrame
+df['Cluster (Gaussian_PCA)'] = cluster_labels
+
+# View the players in each cluster
+for i in range(optimal_n_clusters):
+    print(f"Players in Cluster {i+1}:")
+    print(df[df['Cluster (Gaussian_PCA)'] == i]['Player'].values)
+    print()
+```
+### Output
+```{python}
+#| echo: false
+#| eval: true
+
+# Add cluster labels to the original DataFrame
+df['Cluster (Gaussian_PCA)'] = cluster_labels
+
+# View the players in each cluster
+for i in range(optimal_n_clusters):
+    print(f"Players in Cluster {i+1}:")
+    print(df[df['Cluster (Gaussian_PCA)'] == i]['Player'].values)
+    print()
+```
+:::
+
+## Clustering with Guassian mixture (PCA)
+Finally, the three visualizations:
+```{python}
+#| echo: false
+#| eval: true
+
+features = ['ORB%', 'DRB%', 'AST%', 'STL%', 'BLK%', 'TOV%', 'USG%', '2P', '2PA', '3P', '3PA', 'FT', 'FTA', 'PTS', 'FG%', '2P%',
+       '3P%', 'FT%', 'TS%', 'eFG%']
+
+# features = ['ORB%', 'DRB%', 'AST%', 'STL%', 'BLK%', 'TOV%', 'USG%', '2P', '2PA', '3P', '3PA', 'FT', 'FTA', 'PTS']
+
+mean_values = df.groupby('Cluster (Gaussian_PCA)')[features].mean()
+
+from math import pi
+
+def create_radar_chart(mean_values, features, clusters):
+    # Set the number of variables and calculate the angle for each axis
+    num_vars = len(features)
+    angles = [n / float(num_vars) * 2 * pi for n in range(num_vars)]
+    angles += angles[:1]
+
+    # Set the radar chart figure
+    plt.figure(figsize=(8, 8))
+    ax = plt.subplot(111, polar=True)
+
+    # Set the first axis on top and move clockwise
+    ax.set_theta_offset(pi / 2)
+    ax.set_theta_direction(-1)
+
+    # Draw axis lines and labels
+    plt.xticks(angles[:-1], features)
+    ax.set_rlabel_position(0)
+    plt.yticks([0.2, 0.4, 0.6, 0.8], ["0.2", "0.4", "0.6", "0.8"], color="gray", size=8)
+    plt.ylim(0, 1)
+
+    # Normalize the mean values to the range [0, 1]
+    normalized_values = mean_values / mean_values.max().max()
+
+    # Plot the radar chart for each cluster
+    for i in range(clusters):
+        values = normalized_values.iloc[i].tolist()
+        values += values[:1]
+        ax.plot(angles, values, linewidth=1, linestyle='solid', label=f"Cluster {i}")
+        ax.fill(angles, values, alpha=0.25)
+
+    # Add legend
+    plt.legend(loc='upper right', bbox_to_anchor=(0.1, 0.1))
+    plt.title("Mean values by attribute for each cluster")
+    plt.show()
+
+# Call the function to create the radar chart
+create_radar_chart(mean_values, features, optimal_n_clusters)
+
+import pandas as pd
+import matplotlib.pyplot as plt
+
+def create_parallel_coordinates_plot(mean_values, features, clusters):
+    # Create a new DataFrame with the cluster labels and mean values
+    mean_values['cluster'] = mean_values.index
+    mean_values = mean_values.reset_index(drop=True)
+
+    # Set up the plot
+    plt.figure(figsize=(15, 10))
+
+    # Plot the parallel coordinates plot using pd.plotting.parallel_coordinates()
+    pd.plotting.parallel_coordinates(mean_values, 'cluster', color=plt.cm.Set1.colors)
+
+    # Customize the plot
+    plt.title("Parallel coordinates plot of mean values by attribute for each cluster")
+    plt.xticks(range(len(features)), features, rotation=90)
+    plt.legend(title='Cluster', loc='upper right')
+
+create_parallel_coordinates_plot(mean_values, features, optimal_n_clusters)
+plt.show()
+
+def create_heatmap(mean_values, features, clusters):
+    # Normalize the mean values to the range [0, 1]
+    normalized_values = mean_values / mean_values.max().max()
+
+    # Plot the heatmap
+    plt.figure(figsize=(25, 10))
+    sns.heatmap(normalized_values, cmap="viridis", annot=True, fmt=".2f", linewidths=.5, cbar_kws={'label': 'Normalized mean value'})
+    plt.title("Heatmap of mean values by attribute for each cluster")
+    plt.xlabel("Feature")
+    plt.ylabel("Cluster")
+    plt.show()
+
+# Call the function to create the heatmap
+create_heatmap(mean_values, features, optimal_n_clusters)
+```
+
+# Conclusions
+
+## Conclusions
+I found that the best model was using K-means PCA Dimension Reduction to three principal components.
+
+8 clusters were created and here is the archetype breakdown for each cluster:
+
+* Cluster 1 - Rim Protectors / Rebounders: These players are primarily known for their shot-blocking and rebounding skills. They are usually big men who play near the basket and make their impact felt on the defensive end. They may not be the most skilled offensively, but their size, athleticism, and hustle allow them to contribute on that end as well.
+    * Examples: Steven Adams, DeAndre Jordan, and Joakim Noah.
+
+## Conclusions
+* Cluster 2 - Playmaking Guards: Players in this cluster are primarily ball handlers who excel at creating scoring opportunities for their teammates. They tend to be skilled passers with good court vision and can break down defenses with their dribbling skills. They can score as well, but their primary role is to facilitate the offense.
+    * Examples: Chris Paul, Kyrie Irving, and Kemba Walker.
+
+## Conclusions
+* Cluster 3 - Scoring Wings: These players are known for their scoring abilities, particularly from the perimeter. They can shoot well from beyond the arc, create their own shots off the dribble, and find ways to score in transition. They may contribute in other areas like rebounding and defense, but their primary role is to put points on the board.
+    * Examples: Klay Thompson, Jaylen Brown, and Devin Booker.
+
+## Conclusions
+* Cluster 4 - Skilled Big Men: Players in this cluster are typically tall and strong with a versatile skill set. They can score inside and outside, rebound, and defend. Some may have a more refined post game, while others can stretch the floor with their shooting ability. They contribute on both ends of the court and can be matchup nightmares for opponents.
+    * Examples: Anthony Davis, Karl-Anthony Towns, and Kristaps Porziņģis.
+
+## Conclusions
+* Cluster 5 - Superstars / All-Around Stars: This cluster consists of the elite players in the league, who excel in multiple aspects of the game. They can score, pass, rebound, and defend at a high level. They are often the focal points of their teams and can carry their teams to success. These players tend to be some of the most well-known and popular players in the league.
+    * Examples: LeBron James, Kevin Durant, and Giannis Antetokounmpo.
+
+## Conclusions
+* Cluster 6 - Role Players: Mainly comprises role players, including guards, forwards, and wings, who provide solid contributions off the bench or in limited minutes.
+    * Examples: Danny Green, Kentavious Caldwell-Pope, and Trevor Ariza.
+
+## Conclusions
+* Cluster 7 - Defensive Specialists: Players in this cluster are valued primarily for their defensive abilities. They are often tasked with guarding the opposing team's best scorer and can be disruptive forces on that end of the court. They may not contribute much offensively, but their defensive impact is significant enough to warrant a place on the roster.
+    * Examples: Marcus Smart, Patrick Beverley, and Tony Allen.
+
+## Conclusions
+* Cluster 8 - Lower End Forwards & Centers: These players are skilled enough to warrant a spot on the roster but only as a backup or during times where a better option in not available.
+    * Examples: Ryan Anderson, Channing Frye, and Ersan İlyasova.
+
+## Conclusions
+Overall, kmeans with PCA was able to create 8 NBA archetypes that can be used by team managers and coaches to determine what type of player they may need for their team.
+
+In the future, I would like to explore other clustering algorithms to see if they can make more accurate clusters. Also, it would be interesting to explore clustering on a position level. 
+
+Finally, it would be interesting to see how different teams are made up based on these archetypes and how it attributes to their overall success.
+

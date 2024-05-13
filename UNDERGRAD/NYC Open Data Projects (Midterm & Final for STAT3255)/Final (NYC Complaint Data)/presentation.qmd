@@ -1,0 +1,1351 @@
+---
+title: "Investigating 311 Complaints in NYC"
+author: "Giovanni Lunetta"
+format:
+  revealjs:
+    height: 500
+    width: 850 
+    embed-resources: true
+    slide-number: true
+    smaller: true
+    scrollable: true
+    theme: solarized
+#    chalkboard: 
+#      buttons: false
+    preview-links: auto
+#    logo: images/quarto.png
+#    css: styles.css
+    footer: "UConn Intro to Data Science: STAT 3255/5255"
+execute: 
+  cache: true
+---
+
+## Outline
+
+1. Introduction
+
+2. Specific Aims
+
+3. Data
+
+4. Data Cleaning
+
+5. Visualizations
+
+6. Statistical Testing
+
+7. Modeling
+
+8. Conclusions
+
+# Introduction
+
+## Introduction
+
+- Research Objective: Investigate the relationship between specific types of 311 complaints and the boroughs they are most common in, as well as the demographic characteristics of those boroughs.
+
+- Importance: Identify potential areas for improvement in service delivery and policy development in New York City.
+
+- Previous Studies: Analyzed relationship between 311 complaints and demographic factors such as income, race, and education level.
+
+- Need: Further explore variations in 311 complaints across different boroughs.
+
+# Specific Aims 
+
+## Specific Aims
+
+- Research question: Are there specific types of 311 complaints that are more common in certain boroughs of NYC, and is there a relationship between borough demographics and the types of complaints received?
+
+- Hypothesis: There are differences in the types of 311 complaints across the boroughs, and these differences are related to the demographic characteristics of each borough.
+
+# Data
+
+## Data
+
+- Data source: NYC Open Data Portal, which contains information on all 311 service requests received by the City of New York since 2010.
+
+- Data collection: The data set will be filtered to include only the complaints from January 2023.
+
+- Sampling scheme: All 311 complaints received by all agencies will be included in the data set.
+
+- Data set: The data set will include information on the borough, complaint type, and other relevant demographic information such as population density, and median household income.
+
+# Cleaning Data
+
+## Cleaning Data
+
+The following code was used to clean the data:
+
+```{python}
+#| echo: true
+
+import pandas as pd
+import numpy as np
+
+df = pd.read_csv("/Users/giovanni-lunetta/stat_3255/stat_3255_final/data/311_Service_Requests_from_2010_to_Present.csv")
+
+df.drop(['Unique Key', 'Location', 'Agency Name'], axis=1, inplace=True)
+df.drop(['Bridge Highway Segment', 'Road Ramp', 'Bridge Highway Direction', 'Bridge Highway Name', 'Taxi Pick Up Location', 'Taxi Company Borough', 'Vehicle Type', 'Due Date', 'Facility Type'], axis=1, inplace=True)
+df.drop(['Zip Codes', 'Community Districts', 'Borough Boundaries', 'City Council Districts'], axis=1, inplace=True)
+df.drop(['Street Name', 'BBL', 'X Coordinate (State Plane)', 'Y Coordinate (State Plane)', 'Status', 'Community Board', 'Cross Street 1', 'Cross Street 2', 'Intersection Street 1', 'Intersection Street 2', 'Landmark', 'Park Borough'], axis=1, inplace=True)
+df.dropna(subset=['Latitude', 'Longitude'], inplace=True)
+```
+
+## Cleaning Data
+
+Lets look at the descriptive statistics:
+```{python}
+#| echo: true
+
+df.describe()
+```
+
+## Cleaning Data
+
+Lets check the zip code problem:
+```{python}
+#| echo: true
+
+count_low = df[df['Incident Zip'] <= 10000.000000]['Incident Zip'].count()
+count_high = df[df['Incident Zip'] >= 11697]['Incident Zip'].count()
+print(count_low)
+print(count_high)
+
+df.drop(df[df['Incident Zip'] <= 10000.000000].index, inplace=True)
+df.drop(df[df['Incident Zip'] >= 11697].index, inplace=True)
+```
+
+## Cleaning Data
+
+Here we can deal with some string value issues:
+
+```{python}
+#| echo: true
+
+# fill null values with 'Other'
+df['Location Type'] = df['Location Type'].fillna('Other')
+
+# change all 'Other (Explain Below)' to 'Other' because they are the same thing
+df['Location Type'] = df['Location Type'].replace('Other (Explain Below)', 'Other')
+
+# fill null values with 'Other'
+df['Descriptor'] = df['Descriptor'].fillna('Other')
+
+# change all versions of other to uniform 'Other'
+df['Descriptor'] = df['Descriptor'].replace({'Other (Explain Below)': 'Other',
+                                             'Other (complaint details)': 'Other',
+                                             'Other/Unknown': 'Other'})
+
+df["Address Type"].value_counts(dropna=False)
+
+# fill null values with 'UNRECOGNIZED'
+df['Address Type'] = df['Address Type'].fillna('UNRECOGNIZED')
+
+df['Park Facility Name'] = df['Park Facility Name'].fillna('Unspecified')
+
+df = df.applymap(lambda x: x.lower() if isinstance(x, str) else x)
+```
+
+## Cleaning Data
+
+Another important step is turning the time variables into datetime: 
+```{python}
+#| echo: true
+#| 
+df['Resolution Action Updated Date'] = pd.to_datetime(df['Resolution Action Updated Date'])
+df['Created Date'] = pd.to_datetime(df['Created Date'])
+df['Closed Date'] = pd.to_datetime(df['Closed Date'], errors='coerce')
+```
+
+## Cleaning Data
+
+Then we can check if there are instances where Closed Date is after Starting Date:
+```{python}
+#| echo: true
+
+# Check if there are any instances where the "Closed Date" is earlier than the "Created Date"
+closed_earlier = df[df['Closed Date'] < df['Created Date']]
+
+if closed_earlier.empty:
+    print("No instances where 'Closed Date' is earlier than 'Created Date'")
+else:
+    print("There are instances where 'Closed Date' is earlier than 'Created Date'")
+
+# creates an index containing all of examples where closed date is before created data and drops those columns
+index_to_drop = df.index[df['Closed Date'] < df['Created Date']].tolist()
+df.drop(index_to_drop, inplace=True)
+```
+
+## Cleaning Data
+
+Now we create duration variables from the time variables we created before:
+```{python}
+#| echo: true
+
+df['duration'] = df['Closed Date'] - df['Created Date']
+
+# convert the resulting timedelta object to a numerical value in seconds
+df['duration_seconds'] = df['duration'].dt.total_seconds()
+
+df['duration_hours'] = df['duration'].dt.total_seconds() / 3600
+
+df['duration_days'] = df['duration'].dt.days
+
+# Create two new columns - one for the day of the week and one for the type of day (weekday/weekend):
+df['day_of_week'] = df['Created Date'].dt.dayofweek
+df['day_type'] = np.where(df['day_of_week'] < 5, 'weekday', 'weekend')
+
+df['duration_hours'] = df['duration_hours'].fillna(168)
+```
+
+## Cleaning Data
+
+Now lets merge demographic data from `uszipcodes` to add more predictors:
+```{python}
+#| echo: true
+#| eval: false
+
+from uszipcode import SearchEngine
+import pandas as pd
+
+sr = SearchEngine()
+
+borough_zipcodes = {
+    'Bronx': [str(zipcode) for zipcode in range(10451, 10476)],
+    'Brooklyn': [str(zipcode) for zipcode in range(11201, 11257)],
+    'Manhattan': [str(zipcode) for zipcode in range(10001, 10283)],
+    'Queens': [str(zipcode) for zipcode in range(11004, 11110)] + [str(zipcode) for zipcode in range(11351, 11698)],
+    'Staten Island': [str(zipcode) for zipcode in range(10301, 10315)]
+}
+
+zip_info_list = []
+
+for borough, zipcodes in borough_zipcodes.items():
+    for zipcode in zipcodes:
+        zip_info = sr.by_zipcode(zipcode)
+        if zip_info is not None:
+            zip_info_dict = zip_info.__dict__
+            zip_info_dict['borough'] = borough
+            zip_info_list.append(zip_info_dict)
+
+df1 = pd.DataFrame(zip_info_list)
+
+df1.to_csv('zip_codes.csv')
+```
+```{python}
+#| echo: true
+
+df_zip = pd.read_csv("/Users/giovanni-lunetta/stat_3255/stat_3255_final/data/zip_codes.csv")
+df_zip.drop(['Unnamed: 0', '_sa_instance_state', 'lat', 'water_area_in_sqmi', 'bounds_east', 'zipcode_type', 'lng', 'bounds_north', 'common_city_list', 'county', 'bounds_west', 'state', 'land_area_in_sqmi', 'borough', 'timezone', 'bounds_south', 'major_city', 'radius_in_miles', 'post_office_city', 'area_code_list'], axis=1, inplace=True)
+```
+
+## Cleaning Data
+
+Lets finish up cleaning with a few more steps:
+```{python}
+#| echo: true
+
+df = df[df['Borough'] != 'unspecified']
+
+# Replace all strings containing 'noise' with 'Noise'
+df['Complaint Type'] = df['Complaint Type'].str.replace(r'.*noise.*', 'noise', regex=True)
+
+counts = df['Descriptor'].value_counts()
+to_remove = counts[counts < 10].index
+df = df[~df['Descriptor'].isin(to_remove)]
+
+counts2 = df['Complaint Type'].value_counts()
+to_remove2 = counts2[counts2 < 10].index
+df = df[~df['Complaint Type'].isin(to_remove2)]
+```
+
+```{python}
+#| echo: true
+#| eval: false
+
+df.to_csv('/Users/giovanni-lunetta/stat_3255/stat_3255_final/data/cleaned.csv', index=False)
+```
+
+## Data Cleaning
+
+- Removed unecessary, repetitive and missing data.
+
+- Created duration varibles
+
+- Merged demographic variables
+
+- Changed all noise complaints to `noise`.
+
+# Visualizations
+
+## Visualizations
+Lets load in the cleaned dataset and check our columns:
+```{python}
+#| echo: true
+
+df = pd.read_csv('/Users/giovanni-lunetta/stat_3255/stat_3255_final/data/cleaned.csv')
+df.columns
+```
+
+## Visualizations
+::: {.panel-tabset}
+### Code
+The first task is to look at the Top 20 Complaints for each borough:
+```{python}
+#| echo: true
+#| eval: false
+
+# Get the top 20 'Complaint Type' for each 'Borough'
+borough_complaint_counts = df.groupby(['Borough', 'Complaint Type']).size().reset_index(name='Count')
+for borough in borough_complaint_counts['Borough'].unique():
+    top_20 = borough_complaint_counts[borough_complaint_counts['Borough'] == borough].nlargest(20, 'Count')
+    print('Top 20 Complaint Types in', borough)
+    print(top_20)
+    print('\n')
+```
+### Output
+```{python}
+#| echo: false
+#| eval: true
+
+# Get the top 20 'Complaint Type' for each 'Borough'
+borough_complaint_counts = df.groupby(['Borough', 'Complaint Type']).size().reset_index(name='Count')
+for borough in borough_complaint_counts['Borough'].unique():
+    top_20 = borough_complaint_counts[borough_complaint_counts['Borough'] == borough].nlargest(20, 'Count')
+    print('Top 20 Complaint Types in', borough)
+    print(top_20)
+    print('\n')
+```
+:::
+
+## Visualizations
+::: {.panel-tabset}
+### Code
+What if we want to visualize this better?:
+```{python}
+#| echo: true
+#| eval: false
+
+import seaborn as sns
+import matplotlib.pyplot as plt
+from scipy.stats import chi2_contingency
+from scipy.stats import kruskal
+
+boroughs = df['Borough'].unique()
+
+# Get the top 20 complaint types for each borough
+top_20_complaints = {}
+for borough in df['Borough'].unique():
+    borough_df = df[df['Borough'] == borough]
+    complaint_counts = borough_df['Complaint Type'].value_counts()
+    top_20 = complaint_counts.nlargest(20).index.tolist()
+    top_20_complaints[borough] = top_20
+
+# Create a contingency table for each borough and top 20 complaint type:
+for borough in df['Borough'].unique():
+    borough_df = df[df['Borough'] == borough]
+    top_20 = top_20_complaints[borough]
+    borough_df = borough_df[borough_df['Complaint Type'].isin(top_20)]
+    contingency_table = pd.crosstab(borough_df['Complaint Type'], borough_df['Borough'])
+    
+    # Visualize the contingency table as a heatmap:
+    sns.heatmap(contingency_table, cmap="YlGnBu")
+    plt.title(f'Contingency Table for {borough}')
+    plt.xlabel('Borough')
+    plt.ylabel('Complaint Type')
+    plt.show()
+```
+### Output
+```{python}
+#| echo: false
+#| eval: true
+
+import seaborn as sns
+import matplotlib.pyplot as plt
+from scipy.stats import chi2_contingency
+from scipy.stats import kruskal
+
+boroughs = df['Borough'].unique()
+
+# Get the top 20 complaint types for each borough
+top_20_complaints = {}
+for borough in df['Borough'].unique():
+    borough_df = df[df['Borough'] == borough]
+    complaint_counts = borough_df['Complaint Type'].value_counts()
+    top_20 = complaint_counts.nlargest(20).index.tolist()
+    top_20_complaints[borough] = top_20
+
+# Create a contingency table for each borough and top 20 complaint type:
+for borough in df['Borough'].unique():
+    borough_df = df[df['Borough'] == borough]
+    top_20 = top_20_complaints[borough]
+    borough_df = borough_df[borough_df['Complaint Type'].isin(top_20)]
+    contingency_table = pd.crosstab(borough_df['Complaint Type'], borough_df['Borough'])
+    
+    # Visualize the contingency table as a heatmap:
+    sns.heatmap(contingency_table, cmap="YlGnBu")
+    plt.title(f'Contingency Table for {borough}')
+    plt.xlabel('Borough')
+    plt.ylabel('Complaint Type')
+    plt.show()
+```
+:::
+## Visualizations
+::: {.panel-tabset}
+### Code
+Next, we can create a contingency table to perform statistical tests (talked about later):
+```{python}
+#| echo: true
+#| eval: false
+
+from scipy.stats import chi2_contingency
+
+# Get the top 20 complaints
+top_20_complaints = df['Complaint Type'].value_counts().nlargest(20).index
+
+# Create a contingency table with the top 20 complaints on the left and boroughs as columns
+contingency_table = pd.crosstab(df[df['Complaint Type'].isin(top_20_complaints)]['Complaint Type'],
+                                df[df['Complaint Type'].isin(top_20_complaints)]['Borough'])
+
+# Add a row for "Other" complaints
+other_complaints = df[~df['Complaint Type'].isin(top_20_complaints)]
+other_complaints_by_borough = pd.crosstab(other_complaints['Complaint Type'], other_complaints['Borough']).sum()
+other_complaints_total = other_complaints_by_borough.sum()
+other_complaints_by_borough['Total'] = other_complaints_total
+contingency_table.loc['other'] = other_complaints_by_borough
+
+# Add a total column to the contingency table
+contingency_table['Total'] = contingency_table.sum(axis=1)
+
+# Sort the contingency table by the total count of each complaint
+contingency_table = contingency_table.loc[contingency_table['Total'].sort_values(ascending=False).index]
+
+contingency_table
+```
+### Output
+```{python}
+#| echo: false
+#| eval: true
+
+from scipy.stats import chi2_contingency
+
+# Get the top 20 complaints
+top_20_complaints = df['Complaint Type'].value_counts().nlargest(20).index
+
+# Create a contingency table with the top 20 complaints on the left and boroughs as columns
+contingency_table = pd.crosstab(df[df['Complaint Type'].isin(top_20_complaints)]['Complaint Type'],
+                                df[df['Complaint Type'].isin(top_20_complaints)]['Borough'])
+
+# Add a row for "Other" complaints
+other_complaints = df[~df['Complaint Type'].isin(top_20_complaints)]
+other_complaints_by_borough = pd.crosstab(other_complaints['Complaint Type'], other_complaints['Borough']).sum()
+other_complaints_total = other_complaints_by_borough.sum()
+other_complaints_by_borough['Total'] = other_complaints_total
+contingency_table.loc['other'] = other_complaints_by_borough
+
+# Add a total column to the contingency table
+contingency_table['Total'] = contingency_table.sum(axis=1)
+
+# Sort the contingency table by the total count of each complaint
+contingency_table = contingency_table.loc[contingency_table['Total'].sort_values(ascending=False).index]
+
+contingency_table
+```
+:::
+
+## Visualizations
+We can also look at the distribution of complaint types on a map of NYC: 
+
+<file:///Users/giovanni-lunetta/stat_3255/stat_3255_final/graphs/heatmap.html>
+
+```{python}
+#| echo: true
+#| eval: false
+
+import folium
+from folium.plugins import HeatMap
+
+# Get the top 20 complaints
+top_20_complaints = df['Complaint Type'].value_counts().nlargest(20).index
+
+# create a new dataframe with the frequency of complaints by borough for the top 20 complaints
+df_heatmap = df[df['Complaint Type'].isin(top_20_complaints)].groupby(['Borough', 'Complaint Type']).size().reset_index(name='Frequency')
+
+# create a pivot table with the frequency of complaints for each borough and complaint type
+heatmap_data = pd.pivot_table(df_heatmap, values='Frequency', index=['Borough'], columns=['Complaint Type'])
+
+# create a list of colors for the heatmap
+colors = ['yellow', 'orange', 'red', 'purple', 'blue', 'green']
+
+# create a folium map centered on New York City
+map_heatmap = folium.Map(location=[40.7128, -74.0060], zoom_start=10)
+
+# create a heatmap layer for each complaint type
+for i, c in enumerate(heatmap_data.columns):
+    # sample the data to reduce the number of points on the map
+    sample_size = int(len(df[df['Complaint Type'] == c]) * 0.01)
+    df_sample = df[df['Complaint Type'] == c].sample(n=sample_size)
+    heatmap_layer = HeatMap(list(zip(df_sample['Latitude'], df_sample['Longitude'])),
+                            name=c,
+                            min_opacity=0.5,
+                            max_zoom=18,
+                            radius=15,
+                            blur=10,
+                            gradient={0.4: colors[i%len(colors)-1], 0.65: colors[i%len(colors)-2], 1: colors[i%len(colors)-3]}
+                           )
+    heatmap_layer.add_to(map_heatmap)
+
+# add a layer control to toggle between the different complaint types
+folium.LayerControl().add_to(map_heatmap)
+
+# save the map as an HTML file
+map_heatmap.save('heatmap.html')
+```
+
+## Visualizations
+Now with a cluster graph:
+
+<file:///Users/giovanni-lunetta/stat_3255/stat_3255_final/graphs/top20_complaints_map.html>
+
+```{python}
+#| echo: true
+#| eval: false
+
+import folium
+from folium.plugins import MarkerCluster
+
+# Get the top 20 complaints
+top_20_complaints = df['Complaint Type'].value_counts().nlargest(20).index
+
+# Create a new dataframe with only the top 20 complaints
+df_top_20_complaints = df[df['Complaint Type'].isin(top_20_complaints)]
+
+# Create a folium map centered on New York City
+map_complaints = folium.Map(location=[40.7128, -74.0060], zoom_start=10)
+
+# Create a MarkerCluster layer for each complaint type
+for c in top_20_complaints:
+    # Filter the dataframe to only include the current complaint type
+    df_complaint = df_top_20_complaints[df_top_20_complaints['Complaint Type'] == c]
+    
+    # Create a MarkerCluster layer for the current complaint type
+    mc = MarkerCluster(name=c)
+    
+    # Add a marker to the MarkerCluster layer for each complaint location
+    for lat, lon, address in zip(df_complaint['Latitude'], df_complaint['Longitude'], df_complaint['Incident Address']):
+        folium.Marker(location=[lat, lon], tooltip=address).add_to(mc)
+    
+    # Add the MarkerCluster layer to the map
+    mc.add_to(map_complaints)
+
+# Add a layer control to toggle between the different complaint types
+folium.LayerControl().add_to(map_complaints)
+
+# Display the map
+map_complaints.save("top20_complaints_map.html")
+```
+
+## Visualizations
+::: {.panel-tabset}
+### Code
+Lets turn our attention to demographic factors.
+Here is a visual comparison of the counts of each demographic by borough:
+```{python}
+#| echo: true
+#| eval: false
+
+import numpy as np
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+# select the demographic variables and borough columns
+demographics = df[['housing_units', 'occupied_housing_units', 'median_home_value', 'population', 'median_household_income', 'population_density', 'Borough', 'Incident Zip']]
+
+# drop any rows with missing values
+demographics = demographics.dropna()
+
+# create barplots for each demographic variable
+for var in demographics.columns[:-2]:  # exclude the last two columns (Borough and Incident Zip)
+    plt.figure(figsize=(30, 6))  # set the figure size
+    sns.barplot(x='Incident Zip', y=var, data=demographics, estimator=np.median, dodge=False, hue='Borough')
+    plt.xticks(rotation=90)  # rotate the x-axis labels
+    plt.title(var)
+    plt.show()
+```
+### Output
+```{python}
+#| echo: false
+#| eval: true
+
+import numpy as np
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+# select the demographic variables and borough columns
+demographics = df[['housing_units', 'occupied_housing_units', 'median_home_value', 'population', 'median_household_income', 'population_density', 'Borough', 'Incident Zip']]
+
+# drop any rows with missing values
+demographics = demographics.dropna()
+
+# create barplots for each demographic variable
+for var in demographics.columns[:-2]:  # exclude the last two columns (Borough and Incident Zip)
+    plt.figure(figsize=(30, 6))  # set the figure size
+    sns.barplot(x='Incident Zip', y=var, data=demographics, estimator=np.median, dodge=False, hue='Borough')
+    plt.xticks(rotation=90)  # rotate the x-axis labels
+    plt.title(var)
+    plt.show()
+```
+:::
+
+## Visualizations
+::: {.panel-tabset}
+### Code
+Lets turn our attention to demographic factors.
+Here is a visual comparison of the counts of each demographic by borough:
+```{python}
+#| echo: true
+#| eval: false
+
+import numpy as np
+import seaborn as sns
+
+# select the demographic variables and borough columns
+demographics = df[['housing_units', 'occupied_housing_units', 'median_home_value', 'population', 'median_household_income', 'population_density', 'Borough']]
+
+# drop any rows with missing values
+demographics = demographics.dropna()
+
+# create barplots for each demographic variable
+for var in demographics.columns[:-1]:  # exclude the last column (Borough)
+    sns.barplot(x='Borough', y=var, data=demographics, estimator=np.median)
+    plt.title(var)
+    plt.show()
+```
+### Output
+```{python}
+#| echo: false
+#| eval: true
+
+import numpy as np
+import seaborn as sns
+
+# select the demographic variables and borough columns
+demographics = df[['housing_units', 'occupied_housing_units', 'median_home_value', 'population', 'median_household_income', 'population_density', 'Borough']]
+
+# drop any rows with missing values
+demographics = demographics.dropna()
+
+# create barplots for each demographic variable
+for var in demographics.columns[:-1]:  # exclude the last column (Borough)
+    sns.barplot(x='Borough', y=var, data=demographics, estimator=np.median)
+    plt.title(var)
+    plt.show()
+```
+:::
+
+## Visualizations
+::: {.panel-tabset}
+### Code
+We can also create scatterplots for pairs of demographic variables
+```{python}
+#| echo: true
+#| eval: false
+
+# select the demographic variables and borough columns
+demographics = df[['housing_units', 'occupied_housing_units', 'median_home_value', 'population', 'median_household_income', 'population_density', 'Borough']]
+
+# drop any rows with missing values
+demographics = demographics.dropna()
+
+# create scatterplots for pairs of demographic variables
+sns.pairplot(demographics, hue='Borough')
+plt.show()
+```
+### Output
+```{python}
+#| echo: false
+#| eval: true
+
+# select the demographic variables and borough columns
+demographics = df[['housing_units', 'occupied_housing_units', 'median_home_value', 'population', 'median_household_income', 'population_density', 'Borough']]
+
+# drop any rows with missing values
+demographics = demographics.dropna()
+
+# create scatterplots for pairs of demographic variables
+sns.pairplot(demographics, hue='Borough')
+plt.show()
+```
+:::
+
+# Statistical Testing
+
+## Statistical Testing
+
+Lets start with a Chi-Sqaured test for Contintency:
+
+The null hypothesis for the chi-squared test performed on the contingency table is that there is no association between the Complaint Type and Borough variables in the population. In other words, the observed frequencies in the contingency table are equal to what would be expected by chance alone, given the marginal totals.
+
+The alternative hypothesis is that there is a statistically significant association between the Complaint Type and Borough variables in the population. In other words, the observed frequencies in the contingency table are not equal to what would be expected by chance alone, given the marginal totals, and there is a relationship between the two variables.
+
+```{python}
+#| echo: true
+
+# Perform the chi-squared test for the contingency table
+chi2, p, dof, expected = chi2_contingency(contingency_table.iloc[:-1,:-1])
+
+# Print the result
+print(f'Chi-squared statistic: {chi2:.2f}, p-value: {p:.2e}\n')
+```
+
+## Statistical Testing
+::: {.panel-tabset}
+### Code
+What about each set of Boroughs?
+
+Null hypothesis: The distribution of complaint types across boroughs is the same.
+
+Alternative hypothesis: The distribution of complaint types across boroughs is not the same.
+```{python}
+#| echo: true
+#| eval: false
+
+from scipy.stats import kruskal
+
+# create a list of data frames, one for each borough
+borough_dfs = [df[df['Borough'] == b] for b in df['Borough'].unique()]
+
+# create a dictionary to store the complaint types for each borough
+complaint_types_by_borough = {}
+
+# populate the dictionary with the complaint types for each borough
+for df_borough in borough_dfs:
+    borough_name = df_borough['Borough'].iloc[0]
+    complaint_types = df_borough['Complaint Type'].unique()
+    complaint_types_by_borough[borough_name] = complaint_types
+
+# perform the Kruskal-Wallis test for each combination of boroughs
+n_tests = len(complaint_types_by_borough) * (len(complaint_types_by_borough) - 1) // 2
+alpha = 0.05 / n_tests
+for borough1 in complaint_types_by_borough.keys():
+    for borough2 in complaint_types_by_borough.keys():
+        if borough1 != borough2:
+            print(f'Kruskal-Wallis test for {borough1} vs {borough2}:')
+            data1 = df[df['Borough'] == borough1]['Complaint Type']
+            data2 = df[df['Borough'] == borough2]['Complaint Type']
+            h, p = kruskal(data1, data2)
+            if p < alpha:
+                print(f'H-statistic: {h:.2f}, p-value: {p:.2e} (significant)\n')
+            else:
+                print(f'H-statistic: {h:.2f}, p-value: {p:.2e} (not significant)\n')
+```
+### Output
+```{python}
+#| echo: false
+#| eval: true
+
+from scipy.stats import kruskal
+
+# create a list of data frames, one for each borough
+borough_dfs = [df[df['Borough'] == b] for b in df['Borough'].unique()]
+
+# create a dictionary to store the complaint types for each borough
+complaint_types_by_borough = {}
+
+# populate the dictionary with the complaint types for each borough
+for df_borough in borough_dfs:
+    borough_name = df_borough['Borough'].iloc[0]
+    complaint_types = df_borough['Complaint Type'].unique()
+    complaint_types_by_borough[borough_name] = complaint_types
+
+# perform the Kruskal-Wallis test for each combination of boroughs
+n_tests = len(complaint_types_by_borough) * (len(complaint_types_by_borough) - 1) // 2
+alpha = 0.05 / n_tests
+for borough1 in complaint_types_by_borough.keys():
+    for borough2 in complaint_types_by_borough.keys():
+        if borough1 != borough2:
+            print(f'Kruskal-Wallis test for {borough1} vs {borough2}:')
+            data1 = df[df['Borough'] == borough1]['Complaint Type']
+            data2 = df[df['Borough'] == borough2]['Complaint Type']
+            h, p = kruskal(data1, data2)
+            if p < alpha:
+                print(f'H-statistic: {h:.2f}, p-value: {p:.2e} (significant)\n')
+            else:
+                print(f'H-statistic: {h:.2f}, p-value: {p:.2e} (not significant)\n')
+```
+:::
+
+## Statistical Testing
+::: {.panel-tabset}
+### Code
+What if we want to know if each individual complaint is different among the boroughs?
+```{python}
+#| echo: true
+#| eval: false
+
+from scipy.stats import chi2_contingency
+
+# Get the top 20 complaints
+top_20_complaints = df['Complaint Type'].value_counts().nlargest(20).index
+
+# Create a dictionary to store the results
+results = {}
+
+# Loop through each complaint type and perform the chi-squared test
+for complaint_type in top_20_complaints:
+    # Create a contingency table for the complaint type
+    contingency_table = pd.crosstab(df[df['Complaint Type'] == complaint_type]['Borough'],
+                                    df[df['Complaint Type'] == complaint_type]['Complaint Type'])
+    
+    # Calculate the count of "Other" complaints for each borough
+    other_complaints_by_borough = df[~df['Complaint Type'].isin([complaint_type])]['Borough'].value_counts()
+
+    # Add a row for "Other" complaints
+    other_complaints_total = other_complaints_by_borough.sum()
+    other_complaints_by_borough['other'] = other_complaints_total
+    contingency_table['other'] = other_complaints_by_borough
+    
+    # Perform the chi-squared test
+    chi2, p, dof, expected = chi2_contingency(contingency_table)
+
+    # Store the results in the dictionary
+    results[complaint_type] = {'Chi-squared statistic': chi2, 'p-value': p}
+
+# Print the results
+for complaint_type, result in results.items():
+    print(f"Chi-squared test for {complaint_type}:")
+    print(f"Chi-squared statistic: {result['Chi-squared statistic']:.2f}")
+    print(f"p-value: {result['p-value']:.2e}\n")
+```
+### Output
+```{python}
+#| echo: false
+#| eval: true
+
+from scipy.stats import chi2_contingency
+
+# Get the top 20 complaints
+top_20_complaints = df['Complaint Type'].value_counts().nlargest(20).index
+
+# Create a dictionary to store the results
+results = {}
+
+# Loop through each complaint type and perform the chi-squared test
+for complaint_type in top_20_complaints:
+    # Create a contingency table for the complaint type
+    contingency_table = pd.crosstab(df[df['Complaint Type'] == complaint_type]['Borough'],
+                                    df[df['Complaint Type'] == complaint_type]['Complaint Type'])
+    
+    # Calculate the count of "Other" complaints for each borough
+    other_complaints_by_borough = df[~df['Complaint Type'].isin([complaint_type])]['Borough'].value_counts()
+
+    # Add a row for "Other" complaints
+    other_complaints_total = other_complaints_by_borough.sum()
+    other_complaints_by_borough['other'] = other_complaints_total
+    contingency_table['other'] = other_complaints_by_borough
+    
+    # Perform the chi-squared test
+    chi2, p, dof, expected = chi2_contingency(contingency_table)
+
+    # Store the results in the dictionary
+    results[complaint_type] = {'Chi-squared statistic': chi2, 'p-value': p}
+
+# Print the results
+for complaint_type, result in results.items():
+    print(f"Chi-squared test for {complaint_type}:")
+    print(f"Chi-squared statistic: {result['Chi-squared statistic']:.2f}")
+    print(f"p-value: {result['p-value']:.2e}\n")
+```
+:::
+
+## Statistical Testing
+
+We can run another Kruskal-Wallis test to compare demographic variables (housing units, occupied housing units, median home value, population, median household income, population density) across different boroughs. Therefore, the null hypothesis is that the population medians of each demographic variable are equal across all boroughs, while the alternative hypothesis is that at least one borough has a different population median for a specific demographic variable.
+
+```{python}
+#| echo: true
+
+from scipy.stats import kruskal
+
+# select the demographic variables and borough columns
+demographics = df[['housing_units', 'occupied_housing_units', 'median_home_value', 'population', 'median_household_income', 'population_density', 'Borough']]
+
+# drop any rows with missing values
+demographics = demographics.dropna()
+
+# group the data by borough
+groups = demographics.groupby('Borough')
+
+# conduct a Kruskal-Wallis test for each demographic variable
+for var in demographics.columns[:-1]:  # exclude the last column (Borough)
+    stat, pvalue = kruskal(*[group[var].values for name, group in groups])
+    print(f'{var} - Kruskal-Wallis test statistic: {stat:.2f}, p-value: {pvalue:.4f}')
+```
+
+## Statistical Testing
+::: {.panel-tabset}
+### Code
+Finally, we can tests if each demographic variable is different between each set of boroughs:
+
+In this code, the test is being conducted for each demographic variable between each pair of boroughs, so the null hypothesis for each test is that the two boroughs have equal values for that demographic variable, while the alternative hypothesis is that they have different values.
+```{python}
+#| echo: true
+#| eval: false
+
+from scipy.stats import mannwhitneyu
+
+# select the demographic variables and borough columns
+demographics = df[['housing_units', 'occupied_housing_units', 'median_home_value', 'population', 'median_household_income', 'population_density', 'Borough']]
+
+# drop any rows with missing values
+demographics = demographics.dropna()
+
+# create a list of unique boroughs
+boroughs = demographics['Borough'].unique()
+
+# conduct pairwise Mann-Whitney U tests for each demographic variable
+for var in demographics.columns[:-1]:  # exclude the last column (Borough)
+    print(f'{var}:')
+    for i in range(len(boroughs)):
+        for j in range(i+1, len(boroughs)):
+            borough1 = boroughs[i]
+            borough2 = boroughs[j]
+            group1 = demographics[demographics['Borough'] == borough1][var]
+            group2 = demographics[demographics['Borough'] == borough2][var]
+            stat, pvalue = mannwhitneyu(group1, group2)
+            print(f'{borough1} vs {borough2} - Mann-Whitney U test statistic: {stat:.2f}, p-value: {pvalue:.4f}')
+```
+### Output
+```{python}
+#| echo: false
+#| eval: true
+
+from scipy.stats import mannwhitneyu
+
+# select the demographic variables and borough columns
+demographics = df[['housing_units', 'occupied_housing_units', 'median_home_value', 'population', 'median_household_income', 'population_density', 'Borough']]
+
+# drop any rows with missing values
+demographics = demographics.dropna()
+
+# create a list of unique boroughs
+boroughs = demographics['Borough'].unique()
+
+# conduct pairwise Mann-Whitney U tests for each demographic variable
+for var in demographics.columns[:-1]:  # exclude the last column (Borough)
+    print(f'{var}:')
+    for i in range(len(boroughs)):
+        for j in range(i+1, len(boroughs)):
+            borough1 = boroughs[i]
+            borough2 = boroughs[j]
+            group1 = demographics[demographics['Borough'] == borough1][var]
+            group2 = demographics[demographics['Borough'] == borough2][var]
+            stat, pvalue = mannwhitneyu(group1, group2)
+            print(f'{borough1} vs {borough2} - Mann-Whitney U test statistic: {stat:.2f}, p-value: {pvalue:.4f}')
+```
+:::
+
+## Statistical Testing
+::: {.panel-tabset}
+### Code
+
+We can also test to see if specific Complaint Types are different among the demographics:
+
+```{python}
+#| echo: true
+#| eval: false
+
+from scipy.stats import kruskal
+
+top20complaints = df['Complaint Type'].value_counts().nlargest(20).index.tolist()
+
+df['top20complaint'] = 'other'
+
+df = df.reset_index(drop=True)
+
+for i in range(len(df)):
+    if df.loc[i, 'Complaint Type'] in top20complaints:
+        df.loc[i, 'top20complaint'] = df.loc[i, 'Complaint Type']
+
+df = df.dropna()
+
+# Create an empty dictionary to store the H-statistic and p-value for each demographic variable
+kruskal_results = {}
+
+# Loop over the demographic variables and compute the Kruskal-Wallis H-test for each variable
+for var in ['housing_units', 'occupied_housing_units', 'median_home_value', 'population', 'median_household_income', 'population_density']:
+    var_by_complaint = df.groupby('top20complaint')[var].apply(list)
+    h_stat, p_value = kruskal(*var_by_complaint)
+    kruskal_results[var] = {'H-statistic': h_stat, 'p-value': p_value}
+
+# Print the Kruskal-Wallis H-test table
+print('{:<25} {:<15} {:<15}'.format('Variable', 'H-statistic', 'p-value'))
+print('-' * 55)
+for var, results in kruskal_results.items():
+    print('{:<25} {:<15.2f} {:<15.2e}'.format(var, results['H-statistic'], results['p-value']))
+```
+### Output
+```{python}
+#| echo: false
+#| eval: true
+
+from scipy.stats import kruskal
+
+top20complaints = df['Complaint Type'].value_counts().nlargest(20).index.tolist()
+
+df['top20complaint'] = 'other'
+
+df = df.reset_index(drop=True)
+
+for i in range(len(df)):
+    if df.loc[i, 'Complaint Type'] in top20complaints:
+        df.loc[i, 'top20complaint'] = df.loc[i, 'Complaint Type']
+
+df = df.dropna()
+
+# Create an empty dictionary to store the H-statistic and p-value for each demographic variable
+kruskal_results = {}
+
+# Loop over the demographic variables and compute the Kruskal-Wallis H-test for each variable
+for var in ['housing_units', 'occupied_housing_units', 'median_home_value', 'population', 'median_household_income', 'population_density']:
+    var_by_complaint = df.groupby('top20complaint')[var].apply(list)
+    h_stat, p_value = kruskal(*var_by_complaint)
+    kruskal_results[var] = {'H-statistic': h_stat, 'p-value': p_value}
+
+# Print the Kruskal-Wallis H-test table
+print('{:<25} {:<15} {:<15}'.format('Variable', 'H-statistic', 'p-value'))
+print('-' * 55)
+for var, results in kruskal_results.items():
+    print('{:<25} {:<15.2f} {:<15.2e}'.format(var, results['H-statistic'], results['p-value']))
+
+```
+:::
+
+## Statistical Testing:
+- Chi-Sqaured test for Contintency: There is a significant association between Complaint Type and Borough.
+
+- Kruskal Wallis test to compare Borough & Complaint Type: Every combination of Borough has statistically different Complaint Types except Bronx vs Brooklyn and Manhattan vs Staten Island.
+
+- Chi-Squared test for Independence: Every Complaint Type is significantly different than one another between Borough.
+
+- Kruskal-Wallis test to compare demographic variables: Atleast one borough is statistically different among demographic variables.
+
+- Mann-Whitney U tests to compare the distributions of each demographic variable among the different boroughs: All combinations are statistically significant.
+
+- Kruskal Wallis test for Complaint Type and demographic variables: At least one complaint type is different among each demographic variables.
+
+# Modeling
+
+## Modeling
+What if we want to create a model that predicts which Borough the complaint is coming from?
+
+We have to start by preprocessing the data:
+```{python}
+#| echo: true
+
+df = pd.read_csv('/Users/giovanni-lunetta/stat_3255/stat_3255_final/data/cleaned.csv')
+
+counts2 = df['Location Type'].value_counts()
+to_remove2 = counts2[counts2 < 10].index
+df = df[~df['Location Type'].isin(to_remove2)]
+
+df = df.dropna()
+
+df.drop(['duration_days', 'duration_seconds', 'duration', 'Longitude', 'Latitude', 'Park Facility Name', 'Open Data Channel Type', 'Agency', 'Closed Date'], axis=1, inplace=True)
+
+df['Incident Zip'] = df['Incident Zip'].astype(str)
+df['day_of_week'] = df['day_of_week'].astype(str)
+df['day_type'] = df['day_type'].astype(str)
+
+# df_cleaned.dtypes
+
+df['Created Date'] = pd.to_datetime(df['Created Date'])
+df['Resolution Action Updated Date'] = pd.to_datetime(df['Resolution Action Updated Date'])
+
+# Extract hour, day, and month from 'Created Date' column
+df['Created Hour'] = df['Created Date'].dt.hour
+df['Created Day'] = df['Created Date'].dt.day
+df['Created Month'] = df['Created Date'].dt.month
+
+# Extract hour, day, and month from 'Resolution Action Updated Date' column
+df['Resolution Updated Hour'] = df['Resolution Action Updated Date'].dt.hour
+df['Resolution Updated Day'] = df['Resolution Action Updated Date'].dt.day
+df['Resolution Updated Month'] = df['Resolution Action Updated Date'].dt.month
+
+df.drop(['Created Date', 'Resolution Action Updated Date'], axis=1, inplace=True)
+```
+
+## Modeling
+We also have to scale the numerical predictors and create dummies for the categorical ones:
+
+```{python}
+#| echo: true
+
+from sklearn.preprocessing import StandardScaler
+
+# Create a StandardScaler object
+scaler = StandardScaler()
+
+# select the variables to scale
+variables_to_scale = ['housing_units', 'occupied_housing_units', 'median_home_value', 'population',
+                      'median_household_income', 'population_density', 'Police Precincts', 'duration_hours', 'Created Day', 'Created Hour', 'Resolution Updated Hour', 'Resolution Updated Day']
+
+# apply the scaler to the selected variables
+df.loc[:, variables_to_scale] = scaler.fit_transform(df.loc[:, variables_to_scale])
+
+df.drop(['Incident Zip', 'Incident Address'], axis=1, inplace=True)
+df.drop(['Police Precincts', 'City'], axis=1, inplace=True)
+
+# create a list of column names with object type
+columns = ['Complaint Type', 'Descriptor', 'Location Type',
+           'Address Type', 'Resolution Description', 'day_of_week', 'day_type']
+
+# get dummies with one column removed
+df = pd.get_dummies(df, columns=columns, drop_first=True)
+```
+
+## Modeling
+Finally, we can change the dependent variable, `Borough` to numerical values and import the test data:
+
+```{python}
+#| echo: true
+
+# Define a dictionary to map borough names to numerical values
+borough_dict = {'brooklyn': 0, 'bronx': 1, 'queens': 2, 'manhattan': 3, 'staten island': 4}
+
+# Replace the string values with numerical values
+df['Borough'] = df['Borough'].replace(borough_dict)
+
+df_test = pd.read_csv("/Users/giovanni-lunetta/stat_3255/stat_3255_final/data/cleaned_test.csv")
+
+df.drop(['Created Hour', 'Created Day', 'Created Month',
+       'Resolution Updated Hour', 'Resolution Updated Day',
+       'Resolution Updated Month'], axis=1, inplace=True)
+
+df_test.drop(['Created Hour', 'Created Day', 'Created Month',
+       'Resolution Updated Hour', 'Resolution Updated Day',
+       'Resolution Updated Month'], axis=1, inplace=True)
+```
+
+## Modeling
+Once our data is preprocessed we can split it up into test, train and validation data:
+```{python}
+#| echo: true
+
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import classification_report
+
+# Split the cleaned data into train and validation sets
+X_train, X_val, y_train, y_val = train_test_split(df.drop(['Borough'], axis=1), df['Borough'], test_size=0.2, random_state=42)
+X_test = df_test.drop(['Borough'], axis=1)
+y_test = df_test['Borough']
+
+# Align the test data with the training data to add any missing columns
+X_test_aligned, X_train_aligned = X_test.align(X_train, join='outer', axis=1, fill_value=0)
+X_test = X_test_aligned.loc[:, X_train.columns]
+```
+
+## Modeling
+::: {.panel-tabset}
+### Code
+The next step is to train the model:
+```{python}
+#| echo: true
+#| eval: false
+
+import tensorflow as tf
+import numpy as np
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense
+from tensorflow.keras.utils import plot_model
+from tensorflow.keras.losses import SparseCategoricalCrossentropy
+from tensorflow.keras import regularizers
+from sklearn.metrics import f1_score
+import os
+from sklearn.model_selection import train_test_split
+from imblearn.over_sampling import SMOTE
+
+# Define model architecture
+model = tf.keras.Sequential([
+    tf.keras.layers.Dense(units=10, activation='relu', kernel_regularizer=regularizers.l2(0.01), input_shape=(X_train.shape[1],)),
+    tf.keras.layers.Dense(units=5, activation='relu', kernel_regularizer=regularizers.l2(0.01)),
+    tf.keras.layers.Dense(units=5, activation='softmax')
+])
+
+# Define optimizer with learning rate
+optimizer = tf.keras.optimizers.Adam(learning_rate=0.001)
+
+# Compile model with optimizer
+model.compile(loss='sparse_categorical_crossentropy', optimizer=optimizer, metrics=['accuracy'])
+
+# Train model
+history = model.fit(X_train, y_train, epochs=25, batch_size=32, validation_data=(X_val, y_val))
+```
+### Output
+```{python}
+#| echo: false
+#| eval: true
+
+import tensorflow as tf
+import numpy as np
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense
+from tensorflow.keras.utils import plot_model
+from tensorflow.keras.losses import SparseCategoricalCrossentropy
+from tensorflow.keras import regularizers
+from sklearn.metrics import f1_score
+import os
+from sklearn.model_selection import train_test_split
+from imblearn.over_sampling import SMOTE
+
+# Define model architecture
+model = tf.keras.Sequential([
+    tf.keras.layers.Dense(units=10, activation='relu', kernel_regularizer=regularizers.l2(0.01), input_shape=(X_train.shape[1],)),
+    tf.keras.layers.Dense(units=5, activation='relu', kernel_regularizer=regularizers.l2(0.01)),
+    tf.keras.layers.Dense(units=5, activation='softmax')
+])
+
+# Define optimizer with learning rate
+optimizer = tf.keras.optimizers.Adam(learning_rate=0.001)
+
+# Compile model with optimizer
+model.compile(loss='sparse_categorical_crossentropy', optimizer=optimizer, metrics=['accuracy'])
+
+# Train model
+history = model.fit(X_train, y_train, epochs=25, batch_size=32, validation_data=(X_val, y_val))
+```
+:::
+
+## Modeling
+After we train the model we can check the metrics to see how well it performed:
+```{python}
+#| echo: true
+
+# Evaluate model on test data
+y_pred = model.predict(X_test)
+test_loss, test_acc = model.evaluate(X_test, y_test)
+f1 = f1_score(y_test, y_pred.argmax(axis=1), average='weighted')
+
+# Print model performance metrics
+print(f"Test loss: {test_loss:.4f}")
+print(f"Test accuracy: {test_acc:.4f}")
+print(f"F1 score: {f1:.4f}")
+```
+
+## Modeling
+After we train the model we can check the metrics to see how well it performed:
+```{python}
+#| echo: true
+
+from sklearn.metrics import confusion_matrix
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+# Use the model to predict the class of each test observation
+y_pred = model.predict(X_test)
+y_pred = np.argmax(y_pred, axis=1)
+
+# Compute the confusion matrix
+cm = confusion_matrix(y_test, y_pred)
+
+# Plot the confusion matrix using seaborn
+sns.heatmap(cm, annot=True, cmap='Blues', fmt='g', xticklabels=['Class 1', 'Class 2', 'Class 3', 'Class 4', 'Class 5'], yticklabels=['Class 1', 'Class 2', 'Class 3', 'Class 4', 'Class 5'])
+plt.xlabel('Predicted')
+plt.ylabel('Actual')
+plt.title('Confusion matrix')
+plt.show()
+```
+
+## Modeling
+We can also look at the model loss:
+```{python}
+#| echo: true
+import matplotlib.pyplot as plt
+
+# Plot training & validation loss values
+plt.plot(history.history['loss'])
+plt.plot(history.history['val_loss'])
+plt.title('Model loss')
+plt.ylabel('Loss')
+plt.xlabel('Epoch')
+plt.legend(['Train', 'Validation'], loc='upper right')
+plt.show()
+```
+
+## Modeling
+And the accuracy:
+```{python}
+#| echo: true
+
+# Plot training & validation accuracy values
+plt.plot(history.history['accuracy'])
+plt.plot(history.history['val_accuracy'])
+plt.title('Model accuracy')
+plt.ylabel('Accuracy')
+plt.xlabel('Epoch')
+plt.legend(['Train', 'Validation'], loc='lower right')
+plt.show()
+```
+
+## Modeling
+Finally, lets look at the activation values:
+```{python}
+#| echo: true
+
+get_activations = tf.keras.backend.function([model.layers[0].input], [model.layers[0].output])
+
+# Get the activations for the training set
+activations = get_activations(X_train.values.reshape(-1, X_train.shape[1]))[0]
+
+# Plot the distribution of the activations
+import seaborn as sns
+
+# Create a FacetGrid with the histogram
+g = sns.displot(activations.flatten(), bins=50, kde=True, height=6, aspect=1.5)
+
+# Set the label of the x-axis
+g.set_axis_labels("Activation value", "Count")
+
+# Show the plot
+plt.show()
+```
+
+## Modeling
+
+What predictors were the most important?:
+
+                     Predictor  Importance
+
+           population_density    0.314059
+
+            median_home_value    0.234184
+
+      median_household_income    0.164828
+
+                   population    0.118298
+
+                housing_units    0.114010
+
+       occupied_housing_units    0.053489
+
+               duration_hours    0.000498
+
+             day_type_weekend    0.000061
+
+                day_of_week_4    0.000048
+
+                day_of_week_3    0.000042
+
+# Conclusions
+
+## Conclusions
+
+- It is important for local policy makers to identify which complaints are most common in their area and allocate resources accordingly in order to save time and money.
+
+- By analyzing complaint data, we can identify patterns and prioritize resources in a more targeted way.
+
+- Demographic variables were found to be significant predictors for specific types of complaints.
+
+- Further research could be done to associate specific complaint types with demographics, allowing for even more targeted resource allocation.
+
+- By using data-driven decision making, we can make more informed choices about how to allocate resources and improve the overall effectiveness of local policy.
